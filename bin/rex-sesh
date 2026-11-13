@@ -1,0 +1,49 @@
+#!/bin/sh
+# Convenience launcher only. All picker logic runs in Rex's embedded Lua.
+set -eu
+task_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+task_rex=${REX_SESH_REX:-}
+if [ -z "$task_rex" ]; then task_rex=$(command -v rex || true); fi
+if [ -z "$task_rex" ]; then
+    for task_app in '/Applications/Rex Beta.app' '/Applications/Rex.app'; do
+        task_candidate="$task_app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex"
+        if [ -x "$task_candidate" ]; then task_rex=$task_candidate; break; fi
+    done
+fi
+if [ -z "$task_rex" ]; then
+    echo 'rex-sesh: Rex CLI not found. Run inside Rex or set REX_SESH_REX.' >&2
+    exit 1
+fi
+task_client=${REX_CLIENT:-}
+if [ "${1:-}" = '--client' ]; then
+    [ "$#" -ge 2 ] || { echo 'rex-sesh: --client requires a value' >&2; exit 2; }
+    task_client=$2
+    shift 2
+fi
+task_command=${1:-pick}
+[ "$#" -eq 0 ] || shift
+task_target=''
+task_query=''
+task_json=false
+case "$task_command" in
+    pick)
+        if [ "${1:-}" = '--query' ] && [ "$#" -ge 2 ]; then task_query=$2; shift 2; fi
+        ;;
+    list)
+        if [ "${1:-}" = '--json' ]; then task_json=true; shift; fi
+        ;;
+    connect)
+        [ "$#" -ge 1 ] || { echo 'rex-sesh: connect requires a directory or session ID' >&2; exit 2; }
+        task_target=$1; shift
+        ;;
+    -h|--help|help)
+        echo 'Usage: rex-sesh [--client ID] [pick [--query TEXT] | list [--json] | connect PATH_OR_SESSION_ID]'
+        exit 0
+        ;;
+    *) echo "rex-sesh: unknown command: $task_command" >&2; exit 2 ;;
+esac
+[ "$#" -eq 0 ] || { echo "rex-sesh: unexpected argument: $1" >&2; exit 2; }
+# Environment transport preserves literal strings, including values like "true".
+export REX_SESH_COMMAND="$task_command" REX_SESH_TARGET="$task_target"
+export REX_SESH_QUERY="$task_query" REX_SESH_JSON="$task_json" REX_SESH_CLIENT="$task_client"
+exec "$task_rex" --autostart=false do "$task_root/rex-sesh.lua"
